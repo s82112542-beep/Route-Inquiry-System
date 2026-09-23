@@ -205,7 +205,7 @@
       renderTable(filtered);
     }
 
-// 渲染表格
+    // 渲染表格
     function renderTable(data) {
       const tbody = document.getElementById("tableBody");
       document.getElementById("resultCount").textContent = data.length;
@@ -220,88 +220,36 @@
         return;
       }
 
-      tbody.innerHTML = data.map(item => {
-        // 將 Windows 路徑反斜線(\)轉換為斜線(/)，並轉成 file URI 格式
-        let rawPath = item.path || '';
-        let fileUrl = rawPath.replace(/\\/g, '/');
-        if (fileUrl.startsWith('//')) {
-           // 區網 NAS 路徑，例如 \\192.168.1.1\share 變 file://192.168.1.1/share
-           fileUrl = 'file:' + fileUrl; 
-        } else if (fileUrl !== '') {
-           // 本機路徑，例如 D:\folder 變 file:///D:/folder
-           fileUrl = 'file:///' + fileUrl;
-        }
-
-        return `
+      tbody.innerHTML = data.map(item => `
         <tr class="hover:bg-slate-50 transition">
           <td class="p-4">
-            <span class="inline-block px-2 py-1 text-xs font-medium rounded bg-slate-100 text-slate-600 border border-slate-200">
+            <span class="inline-block px-2 py-1 text-sm font-medium rounded bg-slate-100 text-slate-600 border border-slate-200">
               ${item.tab || '-'}
             </span>
           </td>
-          <td class="p-4 font-mono text-xs font-semibold text-slate-500">${item.id || '-'}</td>
+          <td class="p-4 font-mono text-sm font-semibold text-slate-500">${item.id || '-'}</td>
           <td class="p-4 font-medium text-slate-900">${item.name || '-'}</td>
-          <td class="p-4">
-            <span class="inline-block px-2.5 py-0.5 text-xs font-medium rounded-full bg-indigo-50 text-indigo-700">
+          <td class="p-4 text-center">
+            <span class="inline-flex justify-center items-center w-32 px-2.5 py-0.5 text-sm font-medium rounded-full bg-indigo-50 text-indigo-700">
               ${item.type || '未分類'}
             </span>
           </td>
-          <td class="p-4 font-mono text-xs text-slate-600">${item.folder || '-'}</td>
+          <td class="p-4 font-mono text-sm text-slate-600">${item.folder || '-'}</td>
           <td class="p-4 text-center">
-            
-            <div class="flex items-center justify-center gap-2">
-              <!-- 開啟資料夾按鈕 (使用 file:// 協定) -->
-              ${rawPath ? `
-                <a 
-                  href="${fileUrl}"
-                  target="_blank"
-                  title="直接開啟 (若瀏覽器阻擋請改用複製)"
-                  class="inline-flex items-center gap-1.5 bg-green-600 hover:bg-green-700 text-white text-xs px-3 py-1.5 rounded-lg shadow-sm transition font-medium"
-                >
-                  <i data-lucide="folder-open" class="w-3.5 h-3.5"></i> 開啟
-                </a>
-              ` : ''}
-
-              <!-- 原本的複製按鈕 -->
-              <button 
-                onclick="copyToClipboard('${escapeQuotes(rawPath)}')"
-                class="inline-flex items-center gap-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs px-3 py-1.5 rounded-lg shadow-sm transition font-medium"
-              >
-                <i data-lucide="copy" class="w-3.5 h-3.5"></i> 複製
-              </button>
-            </div>
-
+            <button 
+              onclick="copyToClipboard('${escapeQuotes(item.path || '')}')"
+              class="inline-flex items-center gap-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-sm px-3 py-1.5 rounded-lg shadow-sm transition font-medium"
+            >
+              <i data-lucide="copy" class="w-3.5 h-3.5"></i> 複製路徑
+            </button>
           </td>
         </tr>
-      `}).join('');
+      `).join('');
 
       lucide.createIcons();
     }
 
-    // 安全開啟 NAS 資料夾（同時備用複製路徑）
-    function openNasFolder(path) {
-      if (!path) {
-        showToast("該筆資料無路徑資訊");
-        return;
-      }
 
-      const cleanPath = path.trim();
-
-      // 安全檢查：只允許 UNC 網路路徑 (\\...) 或 本機路徑 (C:\...)
-      const safePathPattern = /^(\\\\[^\s]+|[a-zA-Z]:\\[^\s]+)/;
-      if (!safePathPattern.test(cleanPath)) {
-        alert("⚠️ 路徑格式不正確或包含不安全字元！");
-        return;
-      }
-
-      // 1. 自動複製路徑到剪貼簿（做為備用機制）
-      navigator.clipboard.writeText(cleanPath).catch(err => console.error('複製失敗:', err));
-
-      // 2. 觸發 Windows 自訂協定開啟資料夾
-      window.location.href = "openfolder:" + cleanPath;
-
-      showToast("正在開啟資料夾...（路徑已同步複製）");
-    }
 
     // 僅複製到剪貼簿
     function copyToClipboard(text) {
