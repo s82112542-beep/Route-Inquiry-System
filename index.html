@@ -1,0 +1,338 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>專案資料夾路徑查詢系統</title>
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Lucide Icons -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <style>
+    .toast {
+      transition: transform 0.3s ease-in-out, opacity 0.3s ease-in-out;
+    }
+  </style>
+</head>
+<body class="bg-slate-50 text-slate-800 min-h-screen">
+
+  <div class="max-w-7xl mx-auto p-4 sm:p-6 lg:p-8">
+    
+    <!-- 頁頭 -->
+    <header class="mb-8 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+      <div>
+        <h1 class="text-2xl font-bold text-slate-900 flex items-center gap-2">
+          <i data-lucide="folder-search" class="text-indigo-600"></i>
+          專案資料夾路徑查詢系統
+        </h1>
+        <p class="text-sm text-slate-500 mt-1">即時搜尋內部路徑，點擊一鍵開啟或複製 NAS 資料夾路徑</p>
+      </div>
+      <button onclick="fetchData()" class="self-start md:self-auto flex items-center gap-2 bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 px-4 py-2 rounded-lg text-sm font-medium shadow-sm transition">
+        <i data-lucide="refresh-cw" id="refresh-icon" class="w-4 h-4"></i> 重新整理資料
+      </button>
+    </header>
+
+    <!-- 控制與搜尋區塊 -->
+    <div class="bg-white p-4 rounded-xl shadow-sm border border-slate-200 mb-6 flex flex-col md:flex-row gap-4 justify-between items-center">
+      
+      <!-- 搜尋框 -->
+      <div class="relative w-full md:w-96">
+        <i data-lucide="search" class="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 w-5 h-5"></i>
+        <input 
+          type="text" 
+          id="searchInput" 
+          placeholder="搜尋專案名稱、編號、NAS資料夾..." 
+          oninput="filterData()"
+          class="w-full pl-10 pr-4 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+        >
+      </div>
+
+      <!-- 分頁與類型篩選 -->
+      <div class="flex flex-wrap items-center gap-3 w-full md:w-auto">
+        <div>
+          <select id="tabFilter" onchange="filterData()" class="border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500">
+            <option value="ALL">全部類別分頁</option>
+            <option value="新遊戲專案名稱">新遊戲專案名稱</option>
+            <option value="綜合篇專案名稱">綜合篇專案名稱</option>
+            <option value="魚機系列">魚機系列</option>
+          </select>
+        </div>
+
+        <div>
+          <select id="typeFilter" onchange="filterData()" class="border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500">
+            <option value="ALL">全部遊戲類型</option>
+          </select>
+        </div>
+      </div>
+    </div>
+
+    <!-- 數據統計 -->
+    <div class="text-sm text-slate-500 mb-3 flex justify-between items-center">
+      <span>共找到 <strong id="resultCount" class="text-indigo-600">0</strong> 筆資料</span>
+    </div>
+
+    <!-- 表格區域 -->
+    <div class="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+      <div class="overflow-x-auto">
+        <table class="w-full text-left text-sm">
+          <thead class="bg-slate-100 text-slate-600 font-semibold border-b border-slate-200">
+            <tr>
+              <th class="p-4 w-36 text-center">分頁</th>
+              <th class="p-4 w-28">編號</th>
+              <th class="p-4 w-48">專案/遊戲名稱</th>
+              <th class="p-4 w-36 text-center">類型</th>
+              <th class="p-4">NAS資料夾名稱</th>
+              <th class="p-4 w-52 text-center">專案路徑操作</th>
+            </tr>
+          </thead>
+          <tbody id="tableBody" class="divide-y divide-slate-100">
+            <tr>
+              <td colspan="6" class="p-8 text-center text-slate-400">
+                <i data-lucide="loader" class="animate-spin w-6 h-6 mx-auto mb-2"></i>
+                資料載入中，請稍候...
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast 提示訊息 -->
+  <div id="toast" class="fixed bottom-5 right-5 bg-slate-900 text-white px-4 py-3 rounded-lg shadow-lg flex items-center gap-2 transform translate-y-20 opacity-0 toast z-50">
+    <i data-lucide="check-circle" class="w-5 h-5 text-green-400"></i>
+    <span id="toastMsg">已複製路徑到剪貼簿！</span>
+  </div>
+
+  <script>
+    const GAS_URL = "https://script.google.com/macros/s/AKfycbwlCvKXxCKpCVIL0PodOafg2dtUoNap0kyT082GrQK9UubdBd5eZDuYIjnlbg7suTqoVw/exec"; 
+
+    let rawData = [];
+
+    document.addEventListener("DOMContentLoaded", () => {
+      lucide.createIcons();
+      fetchData();
+    });
+
+    // 抓取 API 資料
+    function fetchData() {
+      const refreshIcon = document.getElementById("refresh-icon");
+      refreshIcon.classList.add("animate-spin");
+
+      fetch(GAS_URL)
+        .then(res => {
+          if (!res.ok) throw new Error("網路連線異常");
+          return res.json();
+        })
+        .then(data => {
+          rawData = data;
+          populateTypeDropdown();
+          filterData();
+        })
+        .catch(err => {
+          console.error("Fetch 失敗，改用備用讀取機制:", err);
+          fetchFallback();
+        })
+        .finally(() => {
+          refreshIcon.classList.remove("animate-spin");
+        });
+    }
+
+    // 備用讀取機制
+    function fetchFallback() {
+      fetch(GAS_URL, { mode: 'cors' })
+        .then(response => response.text())
+        .then(text => {
+          try {
+            const data = JSON.parse(text);
+            rawData = data;
+            populateTypeDropdown();
+            filterData();
+          } catch(e) {
+            alert("資料解析失敗，請確認 API 回傳內容是否為正則 JSON");
+          }
+        })
+        .catch(err => {
+          alert("資料載入失敗，請確認網路連線或權限設定。");
+        });
+    }
+
+    // 動態填入「遊戲類型」選單
+    function populateTypeDropdown() {
+      const typeSelect = document.getElementById("typeFilter");
+      const types = new Set();
+      
+      rawData.forEach(item => {
+        if (item.type && item.type.trim() !== "") {
+          types.add(item.type.trim());
+        }
+      });
+
+      typeSelect.innerHTML = '<option value="ALL">全部遊戲類型</option>';
+      types.forEach(type => {
+        const opt = document.createElement("option");
+        opt.value = type;
+        opt.textContent = type;
+        typeSelect.appendChild(opt);
+      });
+    }
+
+    // 篩選與搜尋資料
+    function filterData() {
+      const searchValue = document.getElementById("searchInput").value.toLowerCase().trim();
+      const tabValue = document.getElementById("tabFilter").value;
+      const typeValue = document.getElementById("typeFilter").value;
+
+      const filtered = rawData.filter(item => {
+        // 核心條件：專案/遊戲名稱 (item.name) 必須有填寫（非空字串且非 '-'）
+        const hasName = item.name && item.name.trim() !== "" && item.name.trim() !== "-";
+        if (!hasName) return false;
+
+        // 關鍵字搜尋條件
+        const matchSearch = 
+          (item.name && item.name.toLowerCase().includes(searchValue)) ||
+          (item.id && item.id.toLowerCase().includes(searchValue)) ||
+          (item.folder && item.folder.toLowerCase().includes(searchValue)) ||
+          (item.path && item.path.toLowerCase().includes(searchValue));
+
+        // 分頁與類型選單條件
+        const matchTab = (tabValue === "ALL") || (item.tab === tabValue);
+        const matchType = (typeValue === "ALL") || (item.type === typeValue);
+
+        return matchSearch && matchTab && matchType;
+      });
+
+      renderTable(filtered);
+    }
+
+// 渲染表格
+    function renderTable(data) {
+      const tbody = document.getElementById("tableBody");
+      document.getElementById("resultCount").textContent = data.length;
+
+      if (data.length === 0) {
+        tbody.innerHTML = `
+          <tr>
+            <td colspan="6" class="p-8 text-center text-slate-400">
+              沒有找到符合條件的專案資料
+            </td>
+          </tr>`;
+        return;
+      }
+
+      tbody.innerHTML = data.map(item => {
+        // 將 Windows 路徑反斜線(\)轉換為斜線(/)，並轉成 file URI 格式
+        let rawPath = item.path || '';
+        let fileUrl = rawPath.replace(/\\/g, '/');
+        if (fileUrl.startsWith('//')) {
+           // 區網 NAS 路徑，例如 \\192.168.1.1\share 變 file://192.168.1.1/share
+           fileUrl = 'file:' + fileUrl; 
+        } else if (fileUrl !== '') {
+           // 本機路徑，例如 D:\folder 變 file:///D:/folder
+           fileUrl = 'file:///' + fileUrl;
+        }
+
+        return `
+        <tr class="hover:bg-slate-50 transition">
+          <td class="p-4">
+            <span class="inline-block px-2 py-1 text-xs font-medium rounded bg-slate-100 text-slate-600 border border-slate-200">
+              ${item.tab || '-'}
+            </span>
+          </td>
+          <td class="p-4 font-mono text-xs font-semibold text-slate-500">${item.id || '-'}</td>
+          <td class="p-4 font-medium text-slate-900">${item.name || '-'}</td>
+          <td class="p-4">
+            <span class="inline-block px-2.5 py-0.5 text-xs font-medium rounded-full bg-indigo-50 text-indigo-700">
+              ${item.type || '未分類'}
+            </span>
+          </td>
+          <td class="p-4 font-mono text-xs text-slate-600">${item.folder || '-'}</td>
+          <td class="p-4 text-center">
+            
+            <div class="flex items-center justify-center gap-2">
+              <!-- 開啟資料夾按鈕 (使用 file:// 協定) -->
+              ${rawPath ? `
+                <a 
+                  href="${fileUrl}"
+                  target="_blank"
+                  title="直接開啟 (若瀏覽器阻擋請改用複製)"
+                  class="inline-flex items-center gap-1.5 bg-green-600 hover:bg-green-700 text-white text-xs px-3 py-1.5 rounded-lg shadow-sm transition font-medium"
+                >
+                  <i data-lucide="folder-open" class="w-3.5 h-3.5"></i> 開啟
+                </a>
+              ` : ''}
+
+              <!-- 原本的複製按鈕 -->
+              <button 
+                onclick="copyToClipboard('${escapeQuotes(rawPath)}')"
+                class="inline-flex items-center gap-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs px-3 py-1.5 rounded-lg shadow-sm transition font-medium"
+              >
+                <i data-lucide="copy" class="w-3.5 h-3.5"></i> 複製
+              </button>
+            </div>
+
+          </td>
+        </tr>
+      `}).join('');
+
+      lucide.createIcons();
+    }
+
+    // 安全開啟 NAS 資料夾（同時備用複製路徑）
+    function openNasFolder(path) {
+      if (!path) {
+        showToast("該筆資料無路徑資訊");
+        return;
+      }
+
+      const cleanPath = path.trim();
+
+      // 安全檢查：只允許 UNC 網路路徑 (\\...) 或 本機路徑 (C:\...)
+      const safePathPattern = /^(\\\\[^\s]+|[a-zA-Z]:\\[^\s]+)/;
+      if (!safePathPattern.test(cleanPath)) {
+        alert("⚠️ 路徑格式不正確或包含不安全字元！");
+        return;
+      }
+
+      // 1. 自動複製路徑到剪貼簿（做為備用機制）
+      navigator.clipboard.writeText(cleanPath).catch(err => console.error('複製失敗:', err));
+
+      // 2. 觸發 Windows 自訂協定開啟資料夾
+      window.location.href = "openfolder:" + cleanPath;
+
+      showToast("正在開啟資料夾...（路徑已同步複製）");
+    }
+
+    // 僅複製到剪貼簿
+    function copyToClipboard(text) {
+      if (!text) {
+        showToast("該筆資料無路徑資訊");
+        return;
+      }
+      navigator.clipboard.writeText(text).then(() => {
+        showToast("已複製專案路徑！按 Win + R 貼上即可開啟");
+      }).catch(err => {
+        console.error('複製失敗: ', err);
+      });
+    }
+
+    // Toast 提示訊息
+    function showToast(message) {
+      const toast = document.getElementById("toast");
+      document.getElementById("toastMsg").textContent = message;
+      
+      toast.classList.remove("translate-y-20", "opacity-0");
+      toast.classList.add("translate-y-0", "opacity-100");
+
+      setTimeout(() => {
+        toast.classList.remove("translate-y-0", "opacity-100");
+        toast.classList.add("translate-y-20", "opacity-0");
+      }, 3000);
+    }
+
+    function escapeQuotes(str) {
+      return str.replace(/\\/g, "\\\\").replace(/'/g, "\\'");
+    }
+  </script>
+</body>
+</html>
